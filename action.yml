@@ -1,0 +1,134 @@
+name: "Detect React Code Smells"
+description: "Detect React code smells using ReactSniffer"
+author: "Social Software Living Lab - S2L2"
+inputs:
+  thresholds-large-component:
+    description: "Threshold for Large Component"
+    required: false
+    default: "-1"
+  thresholds-too-many-props:
+    description: "Threshold for Too Many Props"
+    required: false
+    default: "-1"
+  thresholds-inheritance-instead-of-composition:
+    description: "Threshold for Inheritance Instead of Composition"
+    required: false
+    default: "-1"
+  thresholds-props-in-initial-state:
+    description: "Threshold for Props in Initial State"
+    required: false
+    default: "-1"
+  thresholds-direct-dom-manipulation:
+    description: "Threshold for Direct DOM Manipulation"
+    required: false
+    default: "-1"
+  thresholds-force-update:
+    description: "Threshold for Force Update"
+    required: false
+    default: "-1"
+  thresholds-jsx-outside-render-method:
+    description: "Threshold for JSX Outside Render Method"
+    required: false
+    default: "-1"
+  thresholds-uncontrolled-components:
+    description: "Threshold for Uncontrolled Components"
+    required: false
+    default: "-1"
+  thresholds-large-file:
+    description: "Threshold for Large File"
+    required: false
+    default: "-1"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: latest
+
+    - name: Install reactsniffer
+      run: npm install -g reactsniffer
+      shell: bash
+
+    - name: Run react-sniffer
+      run: reactsniffer src
+      shell: bash
+
+    - name: Upload smell files as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: smells
+        path: |
+          components_smells.csv
+          files_smells.csv
+
+    - name: Validate components smells
+      run: |
+        declare -A error_thresholds=(
+          ["Large Component"]="${{ inputs.thresholds-large-component }}"
+          ["Too many props"]="${{ inputs.thresholds-too-many-props }}"
+          ["Inheritance instead of composition"]="${{ inputs.thresholds-inheritance-instead-of-composition }}"
+          ["Props in initial state"]="${{ inputs.thresholds-props-in-initial-state }}"
+          ["Direct DOM Manipulation"]="${{ inputs.thresholds-direct-dom-manipulation }}"
+          ["Force Update"]="${{ inputs.thresholds-force-update }}"
+          ["JSX outside the render method"]="${{ inputs.thresholds-jsx-outside-render-method }}"
+          ["Uncontrolled component"]="${{ inputs.thresholds-uncontrolled-components }}"
+        )
+
+        check_csv_for_errors() {
+          local file_path="$1"
+          local -n thresholds="$2"
+
+          for error in "${!thresholds[@]}"; do
+            local threshold="${thresholds[$error]}"
+
+            if [ "$threshold" -eq "-1" ]; then
+              echo "Skipping check for '$error' as its threshold is set to -1."
+              continue
+            fi
+
+            error_count=$(grep -o "$error" "$file_path" | wc -l)
+            echo "Found '$error' $error_count times in $file_path with threshold $threshold."
+
+            if [ "$error_count" -ge "$threshold" ]; then
+              echo "Error '$error' count ($error_count) exceeds its threshold ($threshold). Failing the build."
+              exit 1
+            fi
+          done
+
+          echo "Validation passed for errors. No errors exceed their thresholds in $file_path."
+        }
+
+        check_csv_for_errors "components_smells.csv" error_thresholds
+      shell: bash
+
+    - name: Validate file smells
+      run: |
+        thresholds_large_file="${{ inputs.thresholds-large-file }}"
+
+        check_csv_line_count_excluding_header() {
+          local file_path="$1"
+          local threshold="$2"
+
+          if [ "$threshold" -eq "-1" ]; then
+            echo "Skipping line count check for '$file_path' as the threshold is set to -1."
+            return
+          fi
+
+          line_count=$(($(wc -l < "$file_path") - 3))
+          echo "Found $line_count lines (excluding header) in $file_path with threshold $threshold."
+
+          if [ "$line_count" -ge "$threshold" ]; then
+            echo "Line count ($line_count) exceeds the threshold ($threshold). Failing the build."
+            exit 1
+          fi
+
+          echo "Validation passed for line count in $file_path. Line count is within the threshold."
+        }
+
+        check_csv_line_count_excluding_header "files_smells.csv" "$thresholds_large_file"
+      shell: bash
