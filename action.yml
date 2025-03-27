@@ -1,6 +1,9 @@
 name: "Detect React Code Smells"
 description: "Detect React code smells using ReactSniffer"
 author: "Social Software Living Lab - S2L2"
+branding:
+  icon: "search"
+  color: "green"
 inputs:
   thresholds-large-component:
     description: "Threshold for Large Component"
